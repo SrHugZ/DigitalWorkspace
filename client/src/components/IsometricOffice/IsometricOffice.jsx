@@ -2,20 +2,21 @@ import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { IsometricEngine } from '../../engine/IsometricEngine.js'
 import { Pathfinder, visualizePath } from '../../engine/Pathfinding.js'
 import { Avatar, SKIN_COLORS, HAIR_COLORS, HAIR_STYLES, SHIRT_COLORS } from '../../engine/Avatar.js'
-import { createOfficeLayout, getZoneAt, getFurnitureObstacles } from '../../engine/OfficeLayout.js'
+import { createOfficeLayout, getZoneAt, getFurnitureObstacles, getZoneLabels } from '../../engine/OfficeLayout.js'
 import { useWorkspace } from '../../contexts/WorkspaceContext.jsx'
 
 function IsometricOffice() {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
   const pathfinderRef = useRef(null)
-  const avatarsRef = useRef(new Map())
+  const myAvatarRef = useRef(null)
+  const otherAvatarsRef = useRef(new Map())
   const layoutRef = useRef(null)
   const lastTimeRef = useRef(0)
 
   const [hoveredTile, setHoveredTile] = useState(null)
   const [currentZone, setCurrentZone] = useState(null)
-  const [debugPath, setDebugPath] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const { currentUser, users, clientId, move, updateStatus } = useWorkspace()
 
@@ -30,11 +31,6 @@ function IsometricOffice() {
     const resize = () => {
       canvas.width = container.clientWidth
       canvas.height = container.clientHeight
-
-      if (engineRef.current) {
-        // Centralizar no spawn point
-        engineRef.current.centerOn(layoutRef.current.spawnPoint.x, layoutRef.current.spawnPoint.y)
-      }
     }
 
     resize()
@@ -65,25 +61,48 @@ function IsometricOffice() {
       engine.addEntity(item)
     }
 
-    // Centralizar vista
-    engine.centerOn(layout.spawnPoint.x, layout.spawnPoint.y)
+    // Criar avatar do usuário atual
+    if (currentUser) {
+      const myAvatar = new Avatar(
+        layout.spawnPoint.x,
+        layout.spawnPoint.y,
+        {
+          id: clientId,
+          name: currentUser.name,
+          skinColor: SKIN_COLORS[Math.floor(Math.random() * SKIN_COLORS.length)],
+          hairColor: HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)],
+          hairStyle: HAIR_STYLES[Math.floor(Math.random() * HAIR_STYLES.length)],
+          shirtColor: currentUser.avatar?.color || SHIRT_COLORS[Math.floor(Math.random() * SHIRT_COLORS.length)],
+          status: 'available'
+        }
+      )
+      myAvatarRef.current = myAvatar
+      engine.addEntity(myAvatar)
+
+      // Centralizar no avatar
+      engine.centerOn(layout.spawnPoint.x, layout.spawnPoint.y)
+    }
+
+    setIsLoading(false)
 
     return () => {
       window.removeEventListener('resize', resize)
     }
-  }, [])
+  }, [currentUser, clientId])
 
-  // Sincronizar avatares com usuários
+  // Sincronizar outros avatares
   useEffect(() => {
     if (!engineRef.current || !layoutRef.current) return
 
     const engine = engineRef.current
-    const avatars = avatarsRef.current
+    const otherAvatars = otherAvatarsRef.current
 
-    // Atualizar/criar avatares para cada usuário
     for (const user of users) {
-      if (!avatars.has(user.id)) {
-        // Criar novo avatar
+      // Pular o usuário atual
+      if (user.id === clientId) continue
+
+      if (!otherAvatars.has(user.id)) {
+        // Criar novo avatar para outro usuário
         const avatar = new Avatar(
           user.x || layoutRef.current.spawnPoint.x,
           user.y || layoutRef.current.spawnPoint.y,
@@ -97,37 +116,33 @@ function IsometricOffice() {
             status: user.status || 'available'
           }
         )
-
-        avatars.set(user.id, avatar)
+        otherAvatars.set(user.id, avatar)
         engine.addEntity(avatar)
       } else {
-        // Atualizar avatar existente
-        const avatar = avatars.get(user.id)
-
-        // Se a posição mudou (de outro usuário), mover suavemente
-        if (user.id !== clientId) {
-          if (avatar.gridX !== user.x || avatar.gridY !== user.y) {
+        // Atualizar posição do avatar
+        const avatar = otherAvatars.get(user.id)
+        if (user.x !== undefined && user.y !== undefined) {
+          if (Math.abs(avatar.gridX - user.x) > 0.5 || Math.abs(avatar.gridY - user.y) > 0.5) {
             avatar.moveTo(user.x, user.y)
           }
         }
-
         avatar.status = user.status || 'available'
         avatar.name = user.name
       }
     }
 
     // Remover avatares de usuários que saíram
-    for (const [id, avatar] of avatars) {
+    for (const [id, avatar] of otherAvatars) {
       if (!users.find(u => u.id === id)) {
         engine.removeEntity(avatar)
-        avatars.delete(id)
+        otherAvatars.delete(id)
       }
     }
   }, [users, clientId])
 
   // Handler de clique para mover avatar
   const handleClick = useCallback((e) => {
-    if (!engineRef.current || !pathfinderRef.current || !clientId) return
+    if (!engineRef.current || !pathfinderRef.current || !myAvatarRef.current) return
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
@@ -145,13 +160,12 @@ function IsometricOffice() {
         gridPos.x = closest.x
         gridPos.y = closest.y
       } else {
-        return // Não pode ir para lá
+        console.log('Não é possível ir para essa posição')
+        return
       }
     }
 
-    // Obter avatar do usuário atual
-    const avatar = avatarsRef.current.get(clientId)
-    if (!avatar) return
+    const avatar = myAvatarRef.current
 
     // Calcular caminho
     const path = pathfinderRef.current.findPath(
@@ -164,13 +178,12 @@ function IsometricOffice() {
     if (path.length > 0) {
       // Definir caminho no avatar
       avatar.setPath(path)
-      setDebugPath(path)
 
       // Enviar posição final para o servidor
       const finalPos = path[path.length - 1]
       move(finalPos.x, finalPos.y)
 
-      // Verificar zona de destino
+      // Verificar zona de destino e atualizar status
       const zone = getZoneAt(layoutRef.current.zones, finalPos.x, finalPos.y)
       if (zone) {
         updateStatus(zone.status)
@@ -180,7 +193,7 @@ function IsometricOffice() {
         setCurrentZone(null)
       }
     }
-  }, [clientId, move, updateStatus])
+  }, [move, updateStatus])
 
   // Handler de movimento do mouse
   const handleMouseMove = useCallback((e) => {
@@ -202,7 +215,7 @@ function IsometricOffice() {
 
   // Loop de animação
   useEffect(() => {
-    if (!engineRef.current) return
+    if (!engineRef.current || isLoading) return
 
     let animationId
 
@@ -212,35 +225,32 @@ function IsometricOffice() {
 
       const engine = engineRef.current
 
-      // Atualizar avatares
-      for (const avatar of avatarsRef.current.values()) {
+      // Atualizar avatar do usuário
+      if (myAvatarRef.current) {
+        myAvatarRef.current.update(deltaTime)
+      }
+
+      // Atualizar outros avatares
+      for (const avatar of otherAvatarsRef.current.values()) {
         avatar.update(deltaTime)
       }
 
       // Renderizar
       engine.render()
 
-      // Desenhar path de debug (opcional)
-      if (debugPath.length > 0) {
-        visualizePath(engine.ctx, engine, debugPath)
+      // Desenhar labels das zonas
+      if (layoutRef.current) {
+        const labels = getZoneLabels(layoutRef.current.zones)
+        drawZoneLabels(engine.ctx, engine, labels)
       }
 
       // Desenhar highlight do tile sob o mouse
       if (hoveredTile && layoutRef.current) {
         const tile = layoutRef.current.tileMap.getTile(hoveredTile.x, hoveredTile.y)
         if (tile && tile.walkable) {
-          const { x, y } = engine.gridToScreen(hoveredTile.x, hoveredTile.y)
-          const zoom = engine.zoom
-
-          engine.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
-          engine.ctx.lineWidth = 2 * zoom
-          engine.ctx.beginPath()
-          engine.ctx.moveTo(x, y - 16 * zoom)
-          engine.ctx.lineTo(x + 32 * zoom, y)
-          engine.ctx.lineTo(x, y + 16 * zoom)
-          engine.ctx.lineTo(x - 32 * zoom, y)
-          engine.ctx.closePath()
-          engine.ctx.stroke()
+          drawTileHighlight(engine.ctx, engine, hoveredTile.x, hoveredTile.y, 'rgba(255, 255, 255, 0.3)')
+        } else if (tile) {
+          drawTileHighlight(engine.ctx, engine, hoveredTile.x, hoveredTile.y, 'rgba(255, 0, 0, 0.3)')
         }
       }
 
@@ -252,7 +262,16 @@ function IsometricOffice() {
     return () => {
       cancelAnimationFrame(animationId)
     }
-  }, [hoveredTile, debugPath])
+  }, [hoveredTile, isLoading])
+
+  if (isLoading) {
+    return (
+      <div className="loading-overlay">
+        <div className="loading-spinner-large"></div>
+        <div className="loading-text">Carregando escritório...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="isometric-office-container">
@@ -266,17 +285,21 @@ function IsometricOffice() {
       {/* Indicador de zona atual */}
       {currentZone && (
         <div className="zone-indicator" style={{ backgroundColor: currentZone.color }}>
-          {currentZone.name}
+          {currentZone.icon} {currentZone.name}
         </div>
       )}
 
-      {/* Minimap (opcional) */}
+      {/* Minimap */}
       <Minimap
         tileMap={layoutRef.current?.tileMap}
         zones={layoutRef.current?.zones}
-        avatars={avatarsRef.current}
+        myAvatar={myAvatarRef.current}
+        otherAvatars={otherAvatarsRef.current}
         clientId={clientId}
       />
+
+      {/* Lista de Usuários */}
+      <UserList users={users} clientId={clientId} />
 
       {/* Controles de zoom */}
       <div className="zoom-controls">
@@ -290,18 +313,67 @@ function IsometricOffice() {
             engineRef.current.zoom = Math.max(0.5, engineRef.current.zoom / 1.2)
           }
         }}>-</button>
+        <button onClick={() => {
+          if (engineRef.current && myAvatarRef.current) {
+            engineRef.current.centerOn(myAvatarRef.current.visualX, myAvatarRef.current.visualY)
+          }
+        }} title="Centralizar no avatar">⌖</button>
       </div>
 
       {/* Instruções */}
       <div className="instructions">
-        <p>Clique para mover • Scroll para zoom • Arraste com botão direito para pan</p>
+        <p>Clique para mover | Scroll para zoom | Arraste com botão direito para pan</p>
       </div>
     </div>
   )
 }
 
+// Desenhar highlight do tile
+function drawTileHighlight(ctx, engine, gridX, gridY, color) {
+  const { x, y } = engine.gridToScreen(gridX, gridY)
+  const zoom = engine.zoom
+  const halfW = 32 * zoom
+  const halfH = 16 * zoom
+
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.moveTo(x, y - halfH)
+  ctx.lineTo(x + halfW, y)
+  ctx.lineTo(x, y + halfH)
+  ctx.lineTo(x - halfW, y)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+  ctx.lineWidth = 2 * zoom
+  ctx.stroke()
+}
+
+// Desenhar labels das zonas
+function drawZoneLabels(ctx, engine, labels) {
+  for (const label of labels) {
+    const { x, y } = engine.gridToScreen(label.x, label.y)
+    const zoom = engine.zoom
+
+    // Fundo do label
+    ctx.font = `bold ${10 * zoom}px Arial`
+    const textWidth = ctx.measureText(label.text).width
+
+    ctx.fillStyle = label.color + 'CC'
+    ctx.beginPath()
+    ctx.roundRect(x - textWidth / 2 - 8 * zoom, y - 10 * zoom, textWidth + 16 * zoom, 20 * zoom, 4 * zoom)
+    ctx.fill()
+
+    // Texto
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label.text, x, y)
+  }
+}
+
 // Componente de Minimap
-function Minimap({ tileMap, zones, avatars, clientId }) {
+function Minimap({ tileMap, zones, myAvatar, otherAvatars, clientId }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -309,43 +381,109 @@ function Minimap({ tileMap, zones, avatars, clientId }) {
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    const scale = 4
+    const scale = 3
 
     canvas.width = tileMap.width * scale
     canvas.height = tileMap.height * scale
 
-    // Fundo
-    ctx.fillStyle = '#1a1a2e'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    const draw = () => {
+      // Fundo
+      ctx.fillStyle = '#1a1a2e'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Desenhar tiles
-    for (const tile of tileMap.getAllTiles()) {
-      ctx.fillStyle = tile.walkable ? '#3f3f5a' : '#2a2a3e'
-      ctx.fillRect(tile.gridX * scale, tile.gridY * scale, scale - 1, scale - 1)
-    }
-
-    // Desenhar zonas
-    if (zones) {
-      for (const zone of zones) {
-        ctx.fillStyle = zone.color + '40' // Semi-transparente
-        ctx.fillRect(zone.x * scale, zone.y * scale, zone.width * scale, zone.height * scale)
+      // Desenhar zonas primeiro
+      if (zones) {
+        for (const zone of zones) {
+          ctx.fillStyle = zone.color + '60'
+          ctx.fillRect(zone.x * scale, zone.y * scale, zone.width * scale, zone.height * scale)
+        }
       }
-    }
 
-    // Desenhar avatares
-    if (avatars) {
-      for (const [id, avatar] of avatars) {
-        ctx.fillStyle = id === clientId ? '#fbbf24' : '#ef4444'
+      // Desenhar tiles
+      for (const tile of tileMap.getAllTiles()) {
+        ctx.fillStyle = tile.walkable ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
+        ctx.fillRect(tile.gridX * scale, tile.gridY * scale, scale - 0.5, scale - 0.5)
+      }
+
+      // Desenhar outros avatares
+      if (otherAvatars) {
+        ctx.fillStyle = '#ef4444'
+        for (const avatar of otherAvatars.values()) {
+          ctx.beginPath()
+          ctx.arc(avatar.visualX * scale, avatar.visualY * scale, scale * 1.5, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+
+      // Desenhar meu avatar
+      if (myAvatar) {
+        ctx.fillStyle = '#fbbf24'
         ctx.beginPath()
-        ctx.arc(avatar.visualX * scale, avatar.visualY * scale, scale, 0, Math.PI * 2)
+        ctx.arc(myAvatar.visualX * scale, myAvatar.visualY * scale, scale * 2, 0, Math.PI * 2)
         ctx.fill()
       }
+
+      requestAnimationFrame(draw)
     }
-  }, [tileMap, zones, avatars, clientId])
+
+    draw()
+  }, [tileMap, zones, myAvatar, otherAvatars, clientId])
 
   return (
     <div className="minimap">
       <canvas ref={canvasRef} />
+    </div>
+  )
+}
+
+// Lista de usuários online
+function UserList({ users, clientId }) {
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'available': return '#22c55e'
+      case 'focused': return '#f59e0b'
+      case 'in-meeting': return '#ef4444'
+      case 'busy': return '#ef4444'
+      case 'collaborating': return '#8b5cf6'
+      case 'away': return '#64748b'
+      default: return '#22c55e'
+    }
+  }
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'available': return 'Disponível'
+      case 'focused': return 'Focado'
+      case 'in-meeting': return 'Em reunião'
+      case 'busy': return 'Ocupado'
+      case 'collaborating': return 'Colaborando'
+      case 'away': return 'Ausente'
+      default: return 'Disponível'
+    }
+  }
+
+  return (
+    <div className="user-list-panel">
+      <h3>Online ({users.length})</h3>
+      {users.map(user => (
+        <div key={user.id} className="user-list-item">
+          <div
+            className="user-list-item-avatar"
+            style={{ backgroundColor: user.avatar?.color || '#667eea' }}
+          >
+            {user.avatar?.emoji || '😊'}
+          </div>
+          <div className="user-list-item-info">
+            <div className="user-list-item-name">
+              {user.name} {user.id === clientId && '(você)'}
+            </div>
+            <div className="user-list-item-status">
+              <span className="status-dot" style={{ backgroundColor: getStatusColor(user.status) }}></span>
+              {getStatusText(user.status)}
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
