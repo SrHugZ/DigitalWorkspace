@@ -2,6 +2,7 @@
  * Isometric Avatar System
  *
  * Avatares estilo Habbo com 8 direções
+ * Sistema de presença dinâmica - só aparece quem está conectado
  */
 
 import { TILE_WIDTH, TILE_HEIGHT } from './IsometricEngine.js'
@@ -88,7 +89,26 @@ export class Avatar {
     this.isMoving = false
     this.isSitting = false
     this.isWaving = false
-    this.status = options.status || 'available' // available, focused, in-meeting
+    this.status = options.status || 'available'
+
+    // === PRESENÇA DINÂMICA ===
+    this.isSpawning = true        // Animação de entrada
+    this.isDespawning = false     // Animação de saída
+    this.spawnProgress = 0        // 0 a 1
+    this.despawnProgress = 0      // 0 a 1
+    this.opacity = 0              // Opacidade atual
+    this.spawnParticles = []      // Partículas de spawn
+    this.despawnCallback = null   // Callback quando despawn terminar
+
+    // Gerar partículas de spawn
+    this._generateSpawnParticles()
+
+    // === VIDEO FRAME ===
+    this.cameraEnabled = false    // Câmera ativa
+    this.videoFrameGlow = 0       // Brilho do frame de vídeo
+
+    // === SALA ATUAL ===
+    this.currentRoom = null       // Zona onde está
 
     // Animação
     this.animationFrame = 0
@@ -99,10 +119,59 @@ export class Avatar {
     this.path = []
     this.targetX = null
     this.targetY = null
-    this.moveSpeed = 0.08 // Velocidade de movimento (tiles por frame)
+    this.moveSpeed = 0.08
+
+    // Idle animation
+    this.idleTimer = 0
+    this.idleBob = 0
+  }
+
+  _generateSpawnParticles() {
+    this.spawnParticles = []
+    for (let i = 0; i < 12; i++) {
+      this.spawnParticles.push({
+        x: (Math.random() - 0.5) * 40,
+        y: Math.random() * -60,
+        size: 2 + Math.random() * 4,
+        speed: 0.5 + Math.random() * 1.5,
+        opacity: 1,
+        color: ['#667eea', '#764ba2', '#22c55e', '#fbbf24'][Math.floor(Math.random() * 4)]
+      })
+    }
   }
 
   update(deltaTime) {
+    // === SPAWN ANIMATION ===
+    if (this.isSpawning) {
+      this.spawnProgress = Math.min(1, this.spawnProgress + 0.03)
+      this.opacity = this.easeOutBack(this.spawnProgress)
+
+      // Atualizar partículas
+      for (const p of this.spawnParticles) {
+        p.y -= p.speed
+        p.opacity = Math.max(0, p.opacity - 0.02)
+      }
+
+      if (this.spawnProgress >= 1) {
+        this.isSpawning = false
+        this.opacity = 1
+      }
+      return
+    }
+
+    // === DESPAWN ANIMATION ===
+    if (this.isDespawning) {
+      this.despawnProgress = Math.min(1, this.despawnProgress + 0.04)
+      this.opacity = 1 - this.easeInBack(this.despawnProgress)
+
+      if (this.despawnProgress >= 1) {
+        this.isDespawning = false
+        this.opacity = 0
+        if (this.despawnCallback) this.despawnCallback()
+      }
+      return
+    }
+
     // Atualizar animação
     this.animationTimer += deltaTime
     if (this.animationTimer > 150) {
@@ -111,6 +180,19 @@ export class Avatar {
       if (this.isMoving) {
         this.walkCycle = (this.walkCycle + 1) % 8
       }
+    }
+
+    // Idle bob animation
+    this.idleTimer += deltaTime
+    if (!this.isMoving) {
+      this.idleBob = Math.sin(this.idleTimer / 800) * 1.5
+    } else {
+      this.idleBob = 0
+    }
+
+    // Video frame glow
+    if (this.cameraEnabled) {
+      this.videoFrameGlow = 0.6 + Math.sin(Date.now() / 1000) * 0.4
     }
 
     // Movimento suave em direção ao grid
@@ -141,6 +223,27 @@ export class Avatar {
     }
   }
 
+  // Easing functions
+  easeOutBack(t) {
+    const c1 = 1.70158
+    const c3 = c1 + 1
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)
+  }
+
+  easeInBack(t) {
+    const c1 = 1.70158
+    const c3 = c1 + 1
+    return c3 * t * t * t - c1 * t * t
+  }
+
+  // Iniciar despawn (saída)
+  despawn(callback) {
+    this.isDespawning = true
+    this.despawnProgress = 0
+    this.despawnCallback = callback
+    this._generateSpawnParticles()
+  }
+
   getDirectionFromDelta(dx, dy) {
     const angle = Math.atan2(dy, dx) * (180 / Math.PI)
 
@@ -169,19 +272,33 @@ export class Avatar {
   }
 
   render(ctx, engine) {
+    if (this.opacity <= 0) return
+
     const { x, y } = engine.gridToScreen(this.visualX, this.visualY, this.gridZ)
     const zoom = engine.zoom
 
     ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, this.opacity))
+
+    // Escala de spawn (cresce de 0 para 1)
+    const spawnScale = this.isSpawning ? this.easeOutBack(this.spawnProgress) : 1
+    const despawnScale = this.isDespawning ? 1 - this.despawnProgress * 0.5 : 1
+    const scale = spawnScale * despawnScale
+
+    if (scale !== 1) {
+      ctx.translate(x, y)
+      ctx.scale(scale, scale)
+      ctx.translate(-x, -y)
+    }
 
     // Sombra
     this.renderShadow(ctx, x, y, zoom)
 
     // Corpo do avatar
     if (this.isSitting) {
-      this.renderSitting(ctx, x, y, zoom)
+      this.renderSitting(ctx, x, y + this.idleBob * zoom, zoom)
     } else {
-      this.renderStanding(ctx, x, y, zoom)
+      this.renderStanding(ctx, x, y + this.idleBob * zoom, zoom)
     }
 
     // Nome do usuário
@@ -190,7 +307,96 @@ export class Avatar {
     // Indicador de status
     this.renderStatusIndicator(ctx, x, y, zoom)
 
+    // Video frame flutuante
+    if (this.cameraEnabled) {
+      this.renderVideoFrame(ctx, x, y, zoom)
+    }
+
+    // Partículas de spawn/despawn
+    if (this.isSpawning || this.isDespawning) {
+      this.renderSpawnParticles(ctx, x, y, zoom)
+    }
+
     ctx.restore()
+  }
+
+  renderSpawnParticles(ctx, x, y, zoom) {
+    for (const p of this.spawnParticles) {
+      if (p.opacity <= 0) continue
+      ctx.globalAlpha = p.opacity * this.opacity
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(x + p.x * zoom, y + p.y * zoom, p.size * zoom, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  renderVideoFrame(ctx, x, y, zoom) {
+    const frameW = 50 * zoom
+    const frameH = 35 * zoom
+    const frameX = x - frameW / 2
+    const frameY = y - 100 * zoom
+
+    // Linha conectando ao avatar
+    ctx.strokeStyle = `rgba(102, 126, 234, ${this.videoFrameGlow})`
+    ctx.lineWidth = 1.5 * zoom
+    ctx.setLineDash([4 * zoom, 4 * zoom])
+    ctx.beginPath()
+    ctx.moveTo(x, y - 65 * zoom)
+    ctx.lineTo(x, frameY + frameH)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // Sombra do frame
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.5)'
+    ctx.shadowBlur = 10 * zoom
+
+    // Frame background
+    ctx.fillStyle = '#1a1a2e'
+    ctx.beginPath()
+    ctx.roundRect(frameX, frameY, frameW, frameH, 4 * zoom)
+    ctx.fill()
+
+    ctx.shadowBlur = 0
+
+    // Borda brilhante
+    ctx.strokeStyle = `rgba(102, 126, 234, ${this.videoFrameGlow})`
+    ctx.lineWidth = 2 * zoom
+    ctx.beginPath()
+    ctx.roundRect(frameX, frameY, frameW, frameH, 4 * zoom)
+    ctx.stroke()
+
+    // Ícone de câmera
+    ctx.fillStyle = '#667eea'
+    const iconSize = 8 * zoom
+    ctx.beginPath()
+    ctx.roundRect(x - iconSize / 2 - 2 * zoom, frameY + frameH / 2 - iconSize / 2, iconSize, iconSize * 0.7, 2 * zoom)
+    ctx.fill()
+    // Lente
+    ctx.beginPath()
+    ctx.moveTo(x + iconSize / 2 - 2 * zoom, frameY + frameH / 2 - 3 * zoom)
+    ctx.lineTo(x + iconSize / 2 + 3 * zoom, frameY + frameH / 2 - 5 * zoom)
+    ctx.lineTo(x + iconSize / 2 + 3 * zoom, frameY + frameH / 2 + 5 * zoom)
+    ctx.lineTo(x + iconSize / 2 - 2 * zoom, frameY + frameH / 2 + 3 * zoom)
+    ctx.fill()
+
+    // Nome no frame
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
+    ctx.font = `${7 * zoom}px Arial`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(this.name, x, frameY + frameH - 3 * zoom)
+
+    // Indicador "LIVE"
+    ctx.fillStyle = '#ef4444'
+    ctx.beginPath()
+    ctx.arc(frameX + 6 * zoom, frameY + 6 * zoom, 3 * zoom, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.font = `bold ${5 * zoom}px Arial`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText('LIVE', frameX + 11 * zoom, frameY + 3 * zoom)
   }
 
   renderShadow(ctx, x, y, zoom) {
@@ -357,11 +563,9 @@ export class Avatar {
 
     switch (this.hairStyle) {
       case 'short':
-        // Cabelo curto
         ctx.beginPath()
         ctx.arc(x, headY - 2 * scale, 11 * scale, Math.PI, 2 * Math.PI)
         ctx.fill()
-        // Franja
         if (!facingBack) {
           ctx.beginPath()
           ctx.ellipse(x + (facingRight ? 3 : -3) * scale, headY - 6 * scale, 6 * scale, 3 * scale, facingRight ? 0.2 : -0.2, 0, Math.PI * 2)
@@ -370,11 +574,9 @@ export class Avatar {
         break
 
       case 'medium':
-        // Cabelo médio
         ctx.beginPath()
         ctx.arc(x, headY, 12 * scale, Math.PI * 0.8, Math.PI * 2.2)
         ctx.fill()
-        // Laterais
         ctx.beginPath()
         ctx.ellipse(x - 8 * scale, headY + 3 * scale, 4 * scale, 8 * scale, -0.3, 0, Math.PI * 2)
         ctx.fill()
@@ -384,11 +586,9 @@ export class Avatar {
         break
 
       case 'long':
-        // Cabelo longo
         ctx.beginPath()
         ctx.arc(x, headY, 12 * scale, Math.PI * 0.7, Math.PI * 2.3)
         ctx.fill()
-        // Cabelo descendo
         ctx.beginPath()
         ctx.moveTo(x - 11 * scale, headY)
         ctx.quadraticCurveTo(x - 13 * scale, headY + 20 * scale, x - 8 * scale, headY + 25 * scale)
@@ -404,7 +604,6 @@ export class Avatar {
         break
 
       case 'spiky':
-        // Cabelo espetado
         const spikes = 7
         for (let i = 0; i < spikes; i++) {
           const angle = (Math.PI / (spikes - 1)) * i + Math.PI
@@ -428,17 +627,14 @@ export class Avatar {
         break
 
       case 'ponytail':
-        // Rabo de cavalo
         ctx.beginPath()
         ctx.arc(x, headY - 2 * scale, 11 * scale, Math.PI, 2 * Math.PI)
         ctx.fill()
-        // Rabo
         ctx.beginPath()
         ctx.moveTo(x, headY - 10 * scale)
         ctx.quadraticCurveTo(x + 15 * scale, headY - 5 * scale, x + 12 * scale, headY + 15 * scale)
         ctx.quadraticCurveTo(x + 8 * scale, headY + 10 * scale, x + 5 * scale, headY - 5 * scale)
         ctx.fill()
-        // Elástico
         ctx.fillStyle = '#e74c3c'
         ctx.beginPath()
         ctx.ellipse(x + 3 * scale, headY - 8 * scale, 3 * scale, 2 * scale, 0.5, 0, Math.PI * 2)
@@ -446,7 +642,6 @@ export class Avatar {
         break
 
       case 'bald':
-        // Careca - apenas um brilho
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
         ctx.beginPath()
         ctx.ellipse(x - 3 * scale, headY - 5 * scale, 3 * scale, 2 * scale, -0.5, 0, Math.PI * 2)
@@ -471,15 +666,13 @@ export class Avatar {
   renderSitting(ctx, x, y, zoom) {
     const config = AVATAR_CONFIG
     const scale = zoom * 0.8
-    const baseY = y - 10 * zoom // Mais baixo quando sentado
+    const baseY = y - 10 * zoom
 
-    // Pernas dobradas
     ctx.fillStyle = this.pantsColor
     ctx.beginPath()
     ctx.roundRect(x - 8 * scale, baseY + 5 * scale, 16 * scale, 6 * scale, 2 * scale)
     ctx.fill()
 
-    // Sapatos
     ctx.fillStyle = '#1a1a1a'
     ctx.beginPath()
     ctx.ellipse(x - 6 * scale, baseY + 12 * scale, 4 * scale, 2 * scale, 0, 0, Math.PI * 2)
@@ -488,13 +681,11 @@ export class Avatar {
     ctx.ellipse(x + 6 * scale, baseY + 12 * scale, 4 * scale, 2 * scale, 0, 0, Math.PI * 2)
     ctx.fill()
 
-    // Corpo
     ctx.fillStyle = this.shirtColor
     ctx.beginPath()
     ctx.roundRect(x - 8 * scale, baseY - 12 * scale, 16 * scale, 18 * scale, 3 * scale)
     ctx.fill()
 
-    // Braços apoiados
     ctx.fillStyle = this.skinColor
     ctx.beginPath()
     ctx.roundRect(x - 12 * scale, baseY - 2 * scale, 4 * scale, 10 * scale, 2 * scale)
@@ -503,13 +694,11 @@ export class Avatar {
     ctx.roundRect(x + 8 * scale, baseY - 2 * scale, 4 * scale, 10 * scale, 2 * scale)
     ctx.fill()
 
-    // Cabeça
     ctx.fillStyle = this.skinColor
     ctx.beginPath()
     ctx.arc(x, baseY - 22 * scale, config.headRadius * scale, 0, Math.PI * 2)
     ctx.fill()
 
-    // Olhos e cabelo (simplificado)
     ctx.fillStyle = '#fff'
     ctx.beginPath()
     ctx.arc(x - 3 * scale, baseY - 23 * scale, 2 * scale, 0, Math.PI * 2)
@@ -527,7 +716,6 @@ export class Avatar {
   renderName(ctx, x, y, zoom) {
     const nameY = y - 55 * zoom
 
-    // Fundo do nome
     ctx.font = `bold ${11 * zoom}px Arial`
     const textWidth = ctx.measureText(this.name).width
 
@@ -536,7 +724,6 @@ export class Avatar {
     ctx.roundRect(x - textWidth / 2 - 6 * zoom, nameY - 8 * zoom, textWidth + 12 * zoom, 16 * zoom, 4 * zoom)
     ctx.fill()
 
-    // Texto do nome
     ctx.fillStyle = '#fff'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -550,7 +737,11 @@ export class Avatar {
       available: '#22c55e',
       focused: '#f59e0b',
       'in-meeting': '#ef4444',
-      away: '#6b7280'
+      busy: '#ef4444',
+      collaborating: '#8b5cf6',
+      away: '#6b7280',
+      private: '#ec4899',
+      urgent: '#dc2626'
     }
 
     const color = statusColors[this.status] || statusColors.available
@@ -575,13 +766,17 @@ export class Avatar {
     }, 2000)
   }
 
-  // Sentar/levantar
   sit() {
     this.isSitting = true
   }
 
   stand() {
     this.isSitting = false
+  }
+
+  toggleCamera() {
+    this.cameraEnabled = !this.cameraEnabled
+    return this.cameraEnabled
   }
 
   adjustColor(hex, amount) {

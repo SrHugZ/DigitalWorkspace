@@ -45,17 +45,20 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
-    console.log(`Cliente desconectado: ${clientId}`)
     const room = roomManager.getRoomByClient(clientId)
     if (room) {
       const user = room.removeUser(clientId)
       if (user) {
+        // PRESENÇA DINÂMICA: avatar desaparece do mapa para todos
         broadcast(room.id, {
           type: 'user-left',
           userId: clientId,
           userName: user.name
         }, clientId)
+        console.log(`👤 ${user.name} saiu do escritório (${room.getUserCount()} online)`)
       }
+    } else {
+      console.log(`Cliente desconectado: ${clientId}`)
     }
   })
 
