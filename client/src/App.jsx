@@ -1,46 +1,95 @@
 import React, { useState } from 'react'
 import { useWorkspace } from './contexts/WorkspaceContext'
-import LoginScreen from './components/UI/LoginScreen'
-import Office from './components/Office/Office'
 import IsometricOffice from './components/IsometricOffice/IsometricOffice'
-import VideoOverlay from './components/VideoChat/VideoOverlay'
-import StatusBar from './components/UI/StatusBar'
 import './components/IsometricOffice/IsometricOffice.css'
+import './styles/global.css'
 
 function App() {
-  const { isConnected, currentUser, currentRoom } = useWorkspace()
-  const [useIsometric, setUseIsometric] = useState(true) // Default to isometric view
+  const { currentUser, login, users } = useWorkspace()
 
-  if (!isConnected || !currentUser) {
-    return <LoginScreen />
+  // Se não logou ainda, mostrar tela de login
+  if (!currentUser) {
+    return <LoginScreen onLogin={login} />
   }
 
   return (
     <div className="app">
-      <StatusBar />
-
-      {/* Toggle between views */}
-      <div className="view-toggle">
-        <button
-          className={!useIsometric ? 'active' : ''}
-          onClick={() => setUseIsometric(false)}
-        >
-          2D Simples
-        </button>
-        <button
-          className={useIsometric ? 'active' : ''}
-          onClick={() => setUseIsometric(true)}
-        >
-          Isométrico
-        </button>
+      {/* Status Bar simples */}
+      <div className="status-bar">
+        <div className="status-bar-left">
+          <span className="status-bar-logo">Digital Workspace</span>
+          <span className="status-bar-room">Escritório Principal</span>
+        </div>
+        <div className="status-bar-right">
+          <div className="user-count">
+            <span>{users.length} online</span>
+          </div>
+          <div className="current-user">
+            <div
+              className="user-avatar-small"
+              style={{ background: currentUser.avatar?.color || '#667eea' }}
+            >
+              {currentUser.avatar?.emoji || '😊'}
+            </div>
+            <div className="user-info">
+              <span className="user-name">{currentUser.name}</span>
+              <span className="user-status">
+                <span className={`status-indicator ${currentUser.status}`}></span>
+                {getStatusText(currentUser.status)}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Render selected view */}
-      {useIsometric ? <IsometricOffice /> : <Office />}
-
-      <VideoOverlay />
+      {/* Escritório Isométrico */}
+      <IsometricOffice />
     </div>
   )
+}
+
+function LoginScreen({ onLogin }) {
+  const [name, setName] = useState('')
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (name.trim()) {
+      onLogin(name.trim())
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <h1>Digital Workspace</h1>
+        <p>Escritório Virtual Colaborativo</p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder="Seu nome"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+          <button type="submit" disabled={!name.trim()}>
+            Entrar no Escritório
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function getStatusText(status) {
+  switch (status) {
+    case 'available': return 'Disponível'
+    case 'focused': return 'Focado'
+    case 'in-meeting': return 'Em reunião'
+    case 'busy': return 'Ocupado'
+    case 'collaborating': return 'Colaborando'
+    case 'away': return 'Ausente'
+    default: return 'Disponível'
+  }
 }
 
 export default App

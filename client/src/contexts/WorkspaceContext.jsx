@@ -1,128 +1,150 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { useWebSocket } from '../hooks/useWebSocket'
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 
 const WorkspaceContext = createContext(null)
 
+// Gera um ID único
+function generateId() {
+  return 'user-' + Math.random().toString(36).substr(2, 9)
+}
+
+function getRandomColor() {
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
+  return colors[Math.floor(Math.random() * colors.length)]
+}
+
 export function WorkspaceProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
-  const [currentRoom, setCurrentRoom] = useState(null)
   const [users, setUsers] = useState([])
-  const [proximityGroup, setProximityGroup] = useState(null)
   const [messages, setMessages] = useState([])
-  const [availableRooms, setAvailableRooms] = useState([])
+  const [isConnected, setIsConnected] = useState(false)
+  const clientIdRef = useRef(generateId())
 
-  const {
-    isConnected,
-    clientId,
-    send,
-    lastMessage
-  } = useWebSocket('ws://localhost:8080')
+  // WebSocket connection (opcional - tenta conectar, mas funciona sem)
+  const wsRef = useRef(null)
 
-  // Processar mensagens do servidor
   useEffect(() => {
-    if (!lastMessage) return
+    // Tentar conectar ao WebSocket, mas não bloquear se falhar
+    try {
+      const ws = new WebSocket('ws://localhost:8080')
 
-    switch (lastMessage.type) {
-      case 'connected':
-        setAvailableRooms(lastMessage.rooms || [])
-        break
+      ws.onopen = () => {
+        console.log('WebSocket conectado')
+        wsRef.current = ws
+      }
 
-      case 'room-joined':
-        setCurrentRoom(lastMessage.room)
-        setCurrentUser(lastMessage.user)
-        setUsers(lastMessage.room.users)
-        break
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data)
+          handleServerMessage(msg)
+        } catch (e) {
+          // ignore
+        }
+      }
 
+      ws.onerror = () => {
+        console.log('Servidor não disponível - modo offline')
+      }
+
+      ws.onclose = () => {
+        wsRef.current = null
+      }
+    } catch (e) {
+      console.log('Modo offline')
+    }
+  }, [])
+
+  const handleServerMessage = useCallback((msg) => {
+    switch (msg.type) {
       case 'user-joined':
-        setUsers(prev => [...prev.filter(u => u.id !== lastMessage.user.id), lastMessage.user])
+        setUsers(prev => [...prev.filter(u => u.id !== msg.user.id), msg.user])
         break
-
       case 'user-left':
-        setUsers(prev => prev.filter(u => u.id !== lastMessage.userId))
+        setUsers(prev => prev.filter(u => u.id !== msg.userId))
         break
-
       case 'user-moved':
         setUsers(prev => prev.map(u =>
-          u.id === lastMessage.userId
-            ? { ...u, x: lastMessage.x, y: lastMessage.y, status: lastMessage.status, currentZone: lastMessage.currentZone }
-            : u
+          u.id === msg.userId ? { ...u, x: msg.x, y: msg.y, status: msg.status } : u
         ))
         break
-
-      case 'user-status-changed':
-        setUsers(prev => prev.map(u =>
-          u.id === lastMessage.userId
-            ? { ...u, status: lastMessage.status }
-            : u
-        ))
-        break
-
-      case 'proximity-start':
-        if (lastMessage.group.members.includes(clientId)) {
-          setProximityGroup(lastMessage.group)
-        }
-        break
-
-      case 'proximity-end':
-        if (lastMessage.group.members.includes(clientId)) {
-          setProximityGroup(null)
-        }
-        break
-
       case 'chat-message':
-        setMessages(prev => [...prev.slice(-50), lastMessage])
-        break
-
-      default:
+        setMessages(prev => [...prev.slice(-50), msg])
         break
     }
-  }, [lastMessage, clientId])
+  }, [])
 
-  // Atualizar posição do usuário atual
-  useEffect(() => {
-    if (!lastMessage || lastMessage.type !== 'user-moved') return
-    if (lastMessage.userId === clientId) {
-      setCurrentUser(prev => prev ? {
-        ...prev,
-        x: lastMessage.x,
-        y: lastMessage.y,
-        status: lastMessage.status,
-        currentZone: lastMessage.currentZone
-      } : null)
-    }
-  }, [lastMessage, clientId])
-
-  const joinRoom = useCallback((roomId, name) => {
-    send({
-      type: 'join-room',
-      roomId,
+  // Login local - funciona com ou sem servidor
+  const login = useCallback((name) => {
+    const user = {
+      id: clientIdRef.current,
       name,
-      avatar: { color: getRandomColor(), emoji: '😊' }
-    })
-  }, [send])
+      avatar: { color: getRandomColor(), emoji: '😊' },
+      status: 'available',
+      x: 12,
+      y: 32
+    }
+
+    setCurrentUser(user)
+    setUsers([user])
+    setIsConnected(true)
+
+    // Se tiver WebSocket, notificar servidor
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify({
+        type: 'join-room',
+        roomId: 'main-office',
+        name,
+        avatar: user.avatar
+      }))
+    }
+  }, [])
 
   const move = useCallback((x, y) => {
-    send({ type: 'move', x, y })
-  }, [send])
+    // Atualizar localmente
+    setCurrentUser(prev => prev ? { ...prev, x, y } : null)
+    setUsers(prev => prev.map(u =>
+      u.id === clientIdRef.current ? { ...u, x, y } : u
+    ))
+
+    // Enviar para servidor se conectado
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: 'move', x, y }))
+    }
+  }, [])
 
   const updateStatus = useCallback((status) => {
-    send({ type: 'update-status', status })
-  }, [send])
+    setCurrentUser(prev => prev ? { ...prev, status } : null)
+    setUsers(prev => prev.map(u =>
+      u.id === clientIdRef.current ? { ...u, status } : u
+    ))
+
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: 'update-status', status }))
+    }
+  }, [])
 
   const sendChatMessage = useCallback((text) => {
-    send({ type: 'chat-message', text })
-  }, [send])
+    const msg = {
+      type: 'chat-message',
+      text,
+      from: currentUser,
+      timestamp: Date.now()
+    }
+    setMessages(prev => [...prev.slice(-50), msg])
+
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: 'chat-message', text }))
+    }
+  }, [currentUser])
 
   const value = {
     isConnected,
-    clientId,
+    clientId: clientIdRef.current,
     currentUser,
-    currentRoom,
+    currentRoom: { name: 'Escritório Principal', width: 50, height: 40 },
     users,
-    proximityGroup,
+    proximityGroup: null,
     messages,
-    availableRooms,
-    joinRoom,
+    login,
     move,
     updateStatus,
     sendChatMessage
@@ -141,9 +163,4 @@ export function useWorkspace() {
     throw new Error('useWorkspace must be used within WorkspaceProvider')
   }
   return context
-}
-
-function getRandomColor() {
-  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
-  return colors[Math.floor(Math.random() * colors.length)]
 }
