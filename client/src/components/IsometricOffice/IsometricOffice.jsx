@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { IsometricEngine } from '../../engine/IsometricEngine.js'
-import { Pathfinder, visualizePath } from '../../engine/Pathfinding.js'
+import { Pathfinder } from '../../engine/Pathfinding.js'
 import { Avatar, SKIN_COLORS, HAIR_COLORS, HAIR_STYLES, SHIRT_COLORS } from '../../engine/Avatar.js'
 import { createOfficeLayout, getZoneAt, getFurnitureObstacles, getZoneLabels } from '../../engine/OfficeLayout.js'
 import { useWorkspace } from '../../contexts/WorkspaceContext.jsx'
@@ -13,6 +13,7 @@ function IsometricOffice() {
   const otherAvatarsRef = useRef(new Map())
   const layoutRef = useRef(null)
   const lastTimeRef = useRef(0)
+  const initializedRef = useRef(false)
 
   const [hoveredTile, setHoveredTile] = useState(null)
   const [currentZone, setCurrentZone] = useState(null)
@@ -20,21 +21,22 @@ function IsometricOffice() {
 
   const { currentUser, users, clientId, move, updateStatus } = useWorkspace()
 
-  // Inicializar engine e layout
+  // Inicializar engine e layout (apenas uma vez)
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (!canvasRef.current || initializedRef.current) return
 
     const canvas = canvasRef.current
     const container = canvas.parentElement
 
     // Ajustar tamanho do canvas
-    const resize = () => {
+    canvas.width = container.clientWidth
+    canvas.height = container.clientHeight
+
+    const handleResize = () => {
       canvas.width = container.clientWidth
       canvas.height = container.clientHeight
     }
-
-    resize()
-    window.addEventListener('resize', resize)
+    window.addEventListener('resize', handleResize)
 
     // Criar layout do escritório
     const layout = createOfficeLayout()
@@ -61,33 +63,45 @@ function IsometricOffice() {
       engine.addEntity(item)
     }
 
-    // Criar avatar do usuário atual
-    if (currentUser) {
-      const myAvatar = new Avatar(
-        layout.spawnPoint.x,
-        layout.spawnPoint.y,
-        {
-          id: clientId,
-          name: currentUser.name,
-          skinColor: SKIN_COLORS[Math.floor(Math.random() * SKIN_COLORS.length)],
-          hairColor: HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)],
-          hairStyle: HAIR_STYLES[Math.floor(Math.random() * HAIR_STYLES.length)],
-          shirtColor: currentUser.avatar?.color || SHIRT_COLORS[Math.floor(Math.random() * SHIRT_COLORS.length)],
-          status: 'available'
-        }
-      )
-      myAvatarRef.current = myAvatar
-      engine.addEntity(myAvatar)
+    // Centralizar na recepção
+    engine.centerOn(layout.spawnPoint.x, layout.spawnPoint.y)
 
-      // Centralizar no avatar
-      engine.centerOn(layout.spawnPoint.x, layout.spawnPoint.y)
-    }
-
+    initializedRef.current = true
     setIsLoading(false)
 
     return () => {
-      window.removeEventListener('resize', resize)
+      window.removeEventListener('resize', handleResize)
     }
+  }, [])
+
+  // Criar/atualizar avatar do usuário atual quando ele conectar
+  useEffect(() => {
+    if (!engineRef.current || !layoutRef.current || !currentUser || !clientId) return
+
+    // Se já tem avatar, não criar novamente
+    if (myAvatarRef.current) return
+
+    const layout = layoutRef.current
+    const engine = engineRef.current
+
+    const myAvatar = new Avatar(
+      layout.spawnPoint.x,
+      layout.spawnPoint.y,
+      {
+        id: clientId,
+        name: currentUser.name,
+        skinColor: SKIN_COLORS[Math.floor(Math.random() * SKIN_COLORS.length)],
+        hairColor: HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)],
+        hairStyle: HAIR_STYLES[Math.floor(Math.random() * HAIR_STYLES.length)],
+        shirtColor: currentUser.avatar?.color || SHIRT_COLORS[Math.floor(Math.random() * SHIRT_COLORS.length)],
+        status: 'available'
+      }
+    )
+    myAvatarRef.current = myAvatar
+    engine.addEntity(myAvatar)
+
+    // Centralizar no avatar
+    engine.centerOn(layout.spawnPoint.x, layout.spawnPoint.y)
   }, [currentUser, clientId])
 
   // Sincronizar outros avatares
@@ -160,7 +174,6 @@ function IsometricOffice() {
         gridPos.x = closest.x
         gridPos.y = closest.y
       } else {
-        console.log('Não é possível ir para essa posição')
         return
       }
     }
@@ -215,7 +228,7 @@ function IsometricOffice() {
 
   // Loop de animação
   useEffect(() => {
-    if (!engineRef.current || isLoading) return
+    if (isLoading) return
 
     let animationId
 
@@ -224,6 +237,10 @@ function IsometricOffice() {
       lastTimeRef.current = time
 
       const engine = engineRef.current
+      if (!engine) {
+        animationId = requestAnimationFrame(animate)
+        return
+      }
 
       // Atualizar avatar do usuário
       if (myAvatarRef.current) {
@@ -295,11 +312,10 @@ function IsometricOffice() {
         zones={layoutRef.current?.zones}
         myAvatar={myAvatarRef.current}
         otherAvatars={otherAvatarsRef.current}
-        clientId={clientId}
       />
 
       {/* Lista de Usuários */}
-      <UserList users={users} clientId={clientId} />
+      {users.length > 0 && <UserList users={users} clientId={clientId} />}
 
       {/* Controles de zoom */}
       <div className="zoom-controls">
@@ -373,8 +389,9 @@ function drawZoneLabels(ctx, engine, labels) {
 }
 
 // Componente de Minimap
-function Minimap({ tileMap, zones, myAvatar, otherAvatars, clientId }) {
+function Minimap({ tileMap, zones, myAvatar, otherAvatars }) {
   const canvasRef = useRef(null)
+  const animationRef = useRef(null)
 
   useEffect(() => {
     if (!canvasRef.current || !tileMap) return
@@ -423,11 +440,17 @@ function Minimap({ tileMap, zones, myAvatar, otherAvatars, clientId }) {
         ctx.fill()
       }
 
-      requestAnimationFrame(draw)
+      animationRef.current = requestAnimationFrame(draw)
     }
 
     draw()
-  }, [tileMap, zones, myAvatar, otherAvatars, clientId])
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+    }
+  }, [tileMap, zones, myAvatar, otherAvatars])
 
   return (
     <div className="minimap">
