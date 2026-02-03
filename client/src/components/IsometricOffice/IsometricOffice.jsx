@@ -281,17 +281,14 @@ function IsometricOffice() {
     }
   }, [hoveredTile, isLoading])
 
-  if (isLoading) {
-    return (
-      <div className="loading-overlay">
-        <div className="loading-spinner-large"></div>
-        <div className="loading-text">Carregando escritório...</div>
-      </div>
-    )
-  }
-
   return (
     <div className="isometric-office-container">
+      {isLoading && (
+        <div className="loading-overlay">
+          <div className="loading-spinner-large"></div>
+          <div className="loading-text">Carregando escritório...</div>
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         className="isometric-canvas"
