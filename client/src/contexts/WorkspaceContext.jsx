@@ -25,7 +25,13 @@ export function WorkspaceProvider({ children }) {
   // WebSocket connection com reconexão automática
   const connectWebSocket = useCallback(() => {
     try {
-      const ws = new WebSocket('ws://localhost:8080')
+      // Detecta automaticamente o host: funciona local e remoto
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsHost = window.location.hostname
+      const wsPort = 8080
+      const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}`
+      console.log('Conectando WebSocket:', wsUrl)
+      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         console.log('WebSocket conectado ao servidor')

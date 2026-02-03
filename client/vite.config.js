@@ -5,11 +5,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    proxy: {
-      '/ws': {
-        target: 'ws://localhost:8080',
-        ws: true
-      }
-    }
+    host: true // Permite acesso externo (0.0.0.0)
   }
 })

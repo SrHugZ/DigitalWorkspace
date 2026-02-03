@@ -5,7 +5,11 @@ import { handleMessage } from './websocket/messageHandler.js'
 
 const PORT = process.env.PORT || 8080
 
-const wss = new WebSocketServer({ port: PORT })
+const wss = new WebSocketServer({
+  port: PORT,
+  // Aceitar conexões de qualquer origem (acesso remoto)
+  verifyClient: () => true
+})
 const roomManager = new RoomManager()
 
 // Criar escritório padrão
