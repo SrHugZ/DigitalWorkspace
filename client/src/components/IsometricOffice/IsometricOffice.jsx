@@ -3,6 +3,7 @@ import { IsometricEngine } from '../../engine/IsometricEngine.js'
 import { Pathfinder } from '../../engine/Pathfinding.js'
 import { Avatar, SKIN_COLORS, HAIR_COLORS, HAIR_STYLES, SHIRT_COLORS } from '../../engine/Avatar.js'
 import { createOfficeLayout, getZoneAt, getFurnitureObstacles, getZoneLabels } from '../../engine/OfficeLayout.js'
+import { updateWaterAnimation } from '../../engine/TileMap.js'
 import { useWorkspace } from '../../contexts/WorkspaceContext.jsx'
 
 function IsometricOffice() {
@@ -268,6 +269,9 @@ function IsometricOffice() {
       const ambient = ambientRef.current
       ambient.brightness += (ambient.targetBrightness - ambient.brightness) * 0.02
 
+      // Atualizar animação da água
+      updateWaterAnimation()
+
       // Renderizar
       engine.render()
 
@@ -513,7 +517,17 @@ function Minimap({ tileMap, zones, myAvatar, otherAvatars }) {
       }
 
       for (const tile of tileMap.getAllTiles()) {
-        ctx.fillStyle = tile.walkable ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
+        if (tile.type === 9) { // WATER
+          ctx.fillStyle = 'rgba(59,143,212,0.5)'
+        } else if (tile.type === 14) { // SAND
+          ctx.fillStyle = 'rgba(232,216,168,0.4)'
+        } else if (tile.type === 11) { // GARDEN
+          ctx.fillStyle = 'rgba(72,176,104,0.5)'
+        } else if (tile.type === 10) { // DECK
+          ctx.fillStyle = 'rgba(160,120,72,0.5)'
+        } else {
+          ctx.fillStyle = tile.walkable ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
+        }
         ctx.fillRect(tile.gridX * scale, tile.gridY * scale, scale - 0.5, scale - 0.5)
       }
 

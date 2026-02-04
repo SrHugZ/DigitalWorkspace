@@ -122,7 +122,7 @@ export class IsometricEngine {
   }
 
   clear() {
-    this.ctx.fillStyle = '#1a1a2e'
+    this.ctx.fillStyle = '#2a6fb4'
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
   }
 

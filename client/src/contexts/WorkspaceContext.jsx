@@ -163,8 +163,8 @@ export function WorkspaceProvider({ children }) {
       avatar: { color: getRandomColor(), emoji: '😊' },
       status: 'available',
       cameraEnabled: false,
-      x: 12,
-      y: 32,
+      x: 15,
+      y: 35,
       currentZone: null
     }
 
