@@ -11,7 +11,6 @@
  */
 
 import { TileMap, TILE_TYPES } from './TileMap.js'
-import { Wall, WALL_TYPES, WALL_DIRECTIONS } from './Wall.js'
 import { Furniture, FURNITURE_TYPES } from './Furniture.js'
 
 // Definição das zonas com comportamentos
@@ -236,10 +235,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(5, 28, 16, 7, TILE_TYPES.FLOOR_TILE)
   zones.push({ ...ZONES.RECEPTION, x: 5, y: 28, width: 16, height: 7 })
 
-  // Paredes da recepção
-  walls.push(new Wall(21, 28, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 16))
-  walls.push(new Wall(5, 28, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 7))
-
   // Móveis da recepção
   furniture.push(new Furniture(10, 31, FURNITURE_TYPES.DESK))
   furniture.push(new Furniture(10, 32, FURNITURE_TYPES.CHAIR, { color: '#a855f7' }))
@@ -253,9 +248,7 @@ export function createOfficeLayout() {
   tileMap.fillRect(5, 22, 8, 5, TILE_TYPES.FLOOR_CARPET_GREEN)
   zones.push({ ...ZONES.ONBOARDING, x: 5, y: 22, width: 8, height: 5 })
 
-  walls.push(new Wall(13, 22, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 8))
-  walls.push(new Wall(13, 22, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 5))
-  walls.push(new Wall(5, 27, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
+
 
   furniture.push(new Furniture(8, 24, FURNITURE_TYPES.TABLE_ROUND))
   furniture.push(new Furniture(7, 23, FURNITURE_TYPES.CHAIR, { color: '#14b8a6' }))
@@ -267,9 +260,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(5, 15, 8, 6, TILE_TYPES.FLOOR_WOOD)
   zones.push({ ...ZONES.LEADER_OFFICE, x: 5, y: 15, width: 8, height: 6 })
 
-  walls.push(new Wall(13, 15, WALL_DIRECTIONS.NORTH, WALL_TYPES.SOLID, 8))
-  walls.push(new Wall(13, 15, WALL_DIRECTIONS.EAST, WALL_TYPES.WINDOW, 6))
-  walls.push(new Wall(5, 21, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(8, 17, FURNITURE_TYPES.DESK))
   furniture.push(new Furniture(8, 18, FURNITURE_TYPES.CHAIR, { color: '#1e40af' }))
@@ -283,9 +273,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(5, 8, 8, 6, TILE_TYPES.FLOOR_CARPET_BLUE)
   zones.push({ ...ZONES.HR_ROOM, x: 5, y: 8, width: 8, height: 6 })
 
-  walls.push(new Wall(13, 8, WALL_DIRECTIONS.NORTH, WALL_TYPES.SOLID, 8))
-  walls.push(new Wall(13, 8, WALL_DIRECTIONS.EAST, WALL_TYPES.SOLID, 6))
-  walls.push(new Wall(5, 14, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(8, 10, FURNITURE_TYPES.DESK))
   furniture.push(new Furniture(8, 11, FURNITURE_TYPES.CHAIR, { color: '#ec4899' }))
@@ -299,9 +286,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(14, 15, 7, 6, TILE_TYPES.FLOOR_CARPET_RED)
   zones.push({ ...ZONES.MEETING_SMALL, x: 14, y: 15, width: 7, height: 6, name: 'Daily Room' })
 
-  walls.push(new Wall(21, 15, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 7))
-  walls.push(new Wall(21, 15, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 6))
-  walls.push(new Wall(14, 21, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(17, 18, FURNITURE_TYPES.TABLE_ROUND))
   furniture.push(new Furniture(15, 17, FURNITURE_TYPES.CHAIR, { color: '#f59e0b' }))
@@ -314,9 +298,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(14, 5, 7, 9, TILE_TYPES.FLOOR_CARPET_RED)
   zones.push({ ...ZONES.MEETING_LARGE, x: 14, y: 5, width: 7, height: 9, name: 'War Room' })
 
-  walls.push(new Wall(21, 5, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 7))
-  walls.push(new Wall(21, 5, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 9))
-  walls.push(new Wall(14, 14, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(17, 9, FURNITURE_TYPES.TABLE_MEETING))
   furniture.push(new Furniture(15, 7, FURNITURE_TYPES.CHAIR, { color: '#dc2626' }))
@@ -336,10 +317,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(29, 5, 16, 14, TILE_TYPES.FLOOR_CARPET_BLUE)
   zones.push({ ...ZONES.WORKSTATION, x: 29, y: 5, width: 16, height: 14 })
 
-  walls.push(new Wall(45, 5, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 16))
-  walls.push(new Wall(45, 5, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 14))
-  walls.push(new Wall(29, 19, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 4))
-  walls.push(new Wall(41, 19, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 4))
 
   // Fileira 1 de mesas
   for (let i = 0; i < 4; i++) {
@@ -371,9 +348,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(29, 20, 8, 6, TILE_TYPES.FLOOR_WOOD)
   zones.push({ ...ZONES.DEEP_WORK, x: 29, y: 20, width: 8, height: 6 })
 
-  walls.push(new Wall(37, 20, WALL_DIRECTIONS.NORTH, WALL_TYPES.SOLID, 8))
-  walls.push(new Wall(37, 20, WALL_DIRECTIONS.EAST, WALL_TYPES.SOLID, 6))
-  walls.push(new Wall(29, 26, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   // 4 mesas individuais isoladas
   furniture.push(new Furniture(31, 22, FURNITURE_TYPES.DESK))
@@ -387,9 +361,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(38, 20, 7, 6, TILE_TYPES.FLOOR_CARPET_BLUE)
   zones.push({ ...ZONES.PAIR_PROGRAMMING, x: 38, y: 20, width: 7, height: 6 })
 
-  walls.push(new Wall(45, 20, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 7))
-  walls.push(new Wall(45, 20, WALL_DIRECTIONS.EAST, WALL_TYPES.GLASS, 6))
-  walls.push(new Wall(38, 26, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(41, 22, FURNITURE_TYPES.DESK))
   furniture.push(new Furniture(42, 22, FURNITURE_TYPES.COMPUTER))
@@ -402,9 +373,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(29, 27, 16, 8, TILE_TYPES.FLOOR_WOOD)
   zones.push({ ...ZONES.LOUNGE, x: 29, y: 27, width: 16, height: 8 })
 
-  walls.push(new Wall(45, 27, WALL_DIRECTIONS.NORTH, WALL_TYPES.WINDOW, 10))
-  walls.push(new Wall(45, 27, WALL_DIRECTIONS.EAST, WALL_TYPES.WINDOW, 8))
-  walls.push(new Wall(29, 35, WALL_DIRECTIONS.NORTH, WALL_TYPES.GLASS, 4))
 
   // Tapete grande
   furniture.push(new Furniture(37, 31, FURNITURE_TYPES.RUG, { color: '#7c3aed', gridZ: -0.1 }))
@@ -438,9 +406,6 @@ export function createOfficeLayout() {
   tileMap.fillRect(14, 22, 7, 5, TILE_TYPES.FLOOR_CARPET_GREEN)
   zones.push({ ...ZONES.SILENCE_ROOM, x: 14, y: 22, width: 7, height: 5 })
 
-  walls.push(new Wall(21, 22, WALL_DIRECTIONS.NORTH, WALL_TYPES.SOLID, 7))
-  walls.push(new Wall(21, 22, WALL_DIRECTIONS.EAST, WALL_TYPES.SOLID, 5))
-  walls.push(new Wall(14, 27, WALL_DIRECTIONS.NORTH, WALL_TYPES.DOOR, 2))
 
   furniture.push(new Furniture(16, 24, FURNITURE_TYPES.ARMCHAIR, { color: '#64748b' }))
   furniture.push(new Furniture(19, 24, FURNITURE_TYPES.ARMCHAIR, { color: '#64748b' }))
